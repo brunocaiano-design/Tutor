@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutor INVALSI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; height: 100vh; margin: 0; overflow: hidden; background-color: #fff; }
+        .messages-container::-webkit-scrollbar { width: 6px; }
+        .messages-container::-webkit-scrollbar-thumb { background-color: #e2e8f0; border-radius: 10px; }
+        .welcome-card { max-width: 700px; margin: 40px auto; padding: 32px; border-radius: 24px; border: 1px solid #f0f0f0; box-shadow: 0 4px 20px rgba(0,0,0,0.03); }
+        
+        /* Animation for listening state */
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .listening-active {
+            animation: pulse-red 2s infinite;
+            color: #ef4444 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- ⬇️ INCOLLA IL TUO URL QUI SOTTO TRA LE VIRGOLETTE ⬇️ ---
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKcj-AKegk_xxveiRASQ2qoQxKNr0MZJD7fvn4K4a0tqJdH6wszg6BuNhZRyKDaYnxxw/exec";
+        // ------------------------------------------------------------
+
+        const { useState, useRef, useEffect } = React;
+
+        const SYSTEM_INSTRUCTION = `Sei un tutor esperto INVALSI. 
+        REGOLE DI COMPORTAMENTO:
+        1. Se la modalità è "Solo spiegazione": Fornisci spiegazione e soluzione finale.
+        2. Se la modalità è "Apprendimento guidato": NON dare la soluzione, usa domande guida.
+        3. FORMATTAZIONE: Niente LaTeX o simboli strani. Usa x, *, :, x², cm³.`;
+
+        function App() {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const [image, setImage] = useState(null);
+            const [isLoading, setIsLoading] = useState(false);
+            const [level, setLevel] = useState('Primaria');
+            const [mode, setMode] = useState('Solo spiegazione');
+            const [isListening, setIsListening] = useState(false);
+            const [isSpeechSupported, setIsSpeechSupported] = useState(true);
+            
+            const scrollRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const recognitionRef = useRef(null);
+            const baseTextRef = useRef('');
+
+            useEffect(() => {
+                if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                lucide.createIcons();
+            }, [messages, isLoading, image, isListening]);
+
+            // Inizializzazione Speech Recognition
+            useEffect(() => {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (SpeechRecognition) {
+                    const recognition = new SpeechRecognition();
+                    recognition.lang = 'it-IT';
+                    recognition.continuous = true;
+                    recognition.interimResults = true;
+
+                    recognition.onresult = (event) => {
+                        let interimTranscript = '';
+                        let currentSessionFinal = '';
+                        for (let i = event.resultIndex; i < event.results.length; ++i) {
+                            if (event.results[i].isFinal) {
+                                currentSessionFinal += event.results[i][0].transcript;
+                            } else {
+                                interimTranscript += event.results[i][0].transcript;
+                            }
+                        }
+                        setInput(baseTextRef.current + currentSessionFinal + interimTranscript);
+                    };
+
+                    recognition.onstart = () => setIsListening(true);
+                    recognition.onend = () => setIsListening(false);
+                    recognition.onerror = (event) => {
+                        console.error('Errore riconoscimento vocale:', event.error);
+                        setIsListening(false);
+                    };
+
+                    recognitionRef.current = recognition;
+                } else {
+                    setIsSpeechSupported(false);
+                }
+            }, []);
+
+            const toggleListening = () => {
+                if (isListening) {
+                    recognitionRef.current?.stop();
+                } else {
+                    baseTextRef.current = input + (input.length > 0 && !input.endsWith(' ') ? ' ' : '');
+                    try {
+                        recognitionRef.current?.start();
+                    } catch (e) {
+                        console.error("Errore avvio riconoscimento:", e);
+                    }
+                }
+            };
+
+            const handleImage = (file) => {
+                if (file && file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setImage(reader.result);
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const onPaste = (e) => {
+                const items = e.clipboardData.items;
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf("image") !== -1) {
+                        const blob = items[i].getAsFile();
+                        handleImage(blob);
+                    }
+                }
+            };
+
+            const sendMessage = async () => {
+                if ((!input.trim() && !image) || isLoading) return;
+                
+                // Se stiamo ascoltando, fermiamo il microfono prima di inviare
+                if (isListening) recognitionRef.current?.stop();
+
+                const userMsg = { role: 'user', text: input, image: image };
+                setMessages(prev => [...prev, userMsg]);
+                const currentInput = input;
+                const currentImage = image;
+                setInput('');
+                setImage(null);
+                setIsLoading(true);
+
+                try {
+                    const contents = messages.map(m => ({
+                        role: m.role === 'user' ? 'user' : 'model',
+                        parts: [{ text: m.text }]
+                    }));
+
+                    const userParts = [{ text: `Livello: ${level}. Modalità: ${mode}. Quesito: ${currentInput}` }];
+                    if (currentImage) {
+                        userParts.push({
+                            inlineData: {
+                                mimeType: "image/jpeg",
+                                data: currentImage.split(',')[1]
+                            }
+                        });
+                    }
+
+                    const response = await fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({
+                            contents: [...contents, { role: 'user', parts: userParts }],
+                            systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] }
+                        }),
+                    });
+
+                    const data = await response.json();
+                    if (data.error) throw new Error(data.error.message);
+
+                    const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Errore nella generazione.";
+                    setMessages(prev => [...prev, { role: 'model', text: aiText }]);
+                } catch (error) {
+                    setMessages(prev => [...prev, { role: 'model', text: "❌ ERRORE: " + error.message }]);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            return (
+                <div className="flex flex-col h-screen bg-white">
+                    <main ref={scrollRef} className="flex-1 overflow-y-auto p-6 messages-container">
+                        {messages.length === 0 && (
+                            <div className="welcome-card">
+                                <h2 className="text-xl text-gray-800 mb-6 font-medium">Ciao studente! 👋 Benvenuto nel tuo tutor personale per i <strong>Test Invalsi</strong>.</h2>
+                                <p className="text-gray-600 mb-4 font-medium">Ecco come iniziare:</p>
+                                <ul className="space-y-4 text-gray-600 mb-8">
+                                    <li>1. Seleziona il tuo <strong>livello scolastico</strong>.</li>
+                                    <li>2. Scegli tra <strong>"Solo spiegazione"</strong> o <strong>"Apprendimento guidato"</strong>.</li>
+                                    <li>3. Incolla l'immagine o scrivi il testo del quesito (puoi anche usare il <strong>microfono</strong>).</li>
+                                </ul>
+                                <p className="text-blue-600 font-semibold">Spero che lavoreremo bene insieme!</p>
+                            </div>
+                        )}
+
+                        {messages.map((msg, i) => (
+                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-6`}>
+                                <div className={`max-w-[85%] p-4 rounded-2xl ${msg.role === 'user' ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 border text-gray-800'}`}>
+                                    {msg.image && <img src={msg.image} className="max-w-full rounded-lg mb-2 border border-white/20 shadow-sm" />}
+                                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {isLoading && <div className="text-blue-500 italic text-sm animate-pulse ml-2">Il tutor sta analizzando...</div>}
+                    </main>
+
+                    <footer className="p-6 border-t border-gray-100 bg-white">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="flex gap-8 mb-4 items-center text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                <div className="flex items-center gap-3">
+                                    <span>LIVELLO:</span>
+                                    <select value={level} onChange={e => setLevel(e.target.value)} className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-gray-700 normal-case font-semibold outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option>Primaria</option>
+                                        <option>Secondaria I Grado</option>
+                                        <option>Secondaria II Grado</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span>MODALITÀ:</span>
+                                    <select value={mode} onChange={e => setMode(e.target.value)} className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-gray-700 normal-case font-semibold outline-none focus:ring-2 focus:ring-blue-500">
+                                        <option value="Solo spiegazione">Solo spiegazione</option>
+                                        <option value="Apprendimento guidato">Apprendimento guidato</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1 relative">
+                                    {image && (
+                                        <div className="absolute bottom-full left-0 mb-3 p-2 bg-white rounded-xl shadow-2xl border border-gray-100 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
+                                            <img src={image} className="h-16 w-16 object-cover rounded-lg border" />
+                                            <button onClick={() => setImage(null)} className="bg-red-50 text-red-500 hover:bg-red-100 p-1 rounded-full transition-colors">
+                                                <i data-lucide="x" size="16"></i>
+                                            </button>
+                                        </div>
+                                    )}
+                                    <textarea 
+                                        value={input}
+                                        onChange={e => setInput(e.target.value)}
+                                        onPaste={onPaste}
+                                        onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                                        placeholder={isListening ? "Ascoltando..." : "Incolla l'immagine o scrivi il testo..."}
+                                        className={`w-full bg-gray-50 border border-gray-200 rounded-[24px] px-6 py-4 pr-24 outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none min-h-[64px] ${isListening ? 'ring-2 ring-red-100 border-red-200' : ''}`}
+                                        rows="1"
+                                    />
+                                    <div className="absolute right-5 top-1/2 -translate-y-1/2 flex items-center gap-3">
+                                        {isSpeechSupported && (
+                                            <button 
+                                                onClick={toggleListening}
+                                                className={`transition-colors ${isListening ? 'listening-active' : 'text-gray-400 hover:text-red-500'}`}
+                                                title={isListening ? "Ferma ascolto" : "Avvia dettatura vocale"}
+                                            >
+                                                <i data-lucide={isListening ? "mic-off" : "mic"} size="22"></i>
+                                            </button>
+                                        )}
+                                        <button 
+                                            onClick={() => fileInputRef.current.click()}
+                                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                                            title="Carica immagine"
+                                        >
+                                            <i data-lucide="image" size="22"></i>
+                                        </button>
+                                    </div>
+                                    <input type="file" ref={fileInputRef} onChange={(e) => handleImage(e.target.files[0])} accept="image/*" className="hidden" />
+                                </div>
+                                <button 
+                                    onClick={sendMessage}
+                                    className="bg-[#94b3ff] text-white p-5 rounded-[24px] hover:bg-blue-600 shadow-lg shadow-blue-100 transition-all"
+                                >
+                                    <i data-lucide="send" size="22"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
