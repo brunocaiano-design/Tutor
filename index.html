@@ -121,48 +121,137 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
             });
 
             // Converte comandi LaTeX frequenti in simboli chiari e scolastici
-            cleaned = cleaned
-                .replace(/\\times/g, '×')
-                .replace(/\\cdot/g, '·')
-                .replace(/\\div/g, ':')
-                .replace(/\\pm/g, '±')
-                .replace(/\\le(q)?\b/g, '≤')
-                .replace(/\\ge(q)?\b/g, '≥')
-                .replace(/\\neq\b/g, '≠')
-                .replace(/\\approx\b/g, '≈')
-                .replace(/\\pi\b/g, 'π')
-                .replace(/\\left\(/g, '(')
-                .replace(/\\right\)/g, ')')
-                .replace(/\\left\[/g, '[')
-                .replace(/\\right\]/g, ']');
+        cleaned = cleaned
+            .replace(/\\times/g, '×')
+            .replace(/\\cdot/g, '·')
+            .replace(/\\div/g, ':')
+            .replace(/\\pm/g, '±')
+            .replace(/\\le(q)?\b/g, '≤')
+            .replace(/\\ge(q)?\b/g, '≥')
+            .replace(/\\neq\b/g, '≠')
+            .replace(/\\approx\b/g, '≈')
+            .replace(/\\pi\b/g, 'π')
+            .replace(/\\left\(/g, '(')
+            .replace(/\\right\)/g, ')')
+            .replace(/\\left\[/g, '[')
+            .replace(/\\right\]/g, ']');
 
-            // Rimuove eventuali backslash isolati rimasti davanti a caratteri o comandi residui
-            cleaned = cleaned.replace(/\\([a-zA-Z]+)/g, '$1');
+        // Rimuove eventuali backslash isolati rimasti davanti a caratteri o comandi residui
+        cleaned = cleaned.replace(/\\([a-zA-Z]+)/g, '$1');
 
-            // Rimuove i delimitatori LaTeX a dollaro singolo o doppio ($x$ -> x, $$formula$$ -> formula)
-            cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, '$1');
-            cleaned = cleaned.replace(/\$([^\$\n]+)\$/g, '$1');
+        // Rimuove i delimitatori LaTeX a dollaro singolo o doppio ($x$ -> x, $$formula$$ -> formula)
+        cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, '$1');
+        cleaned = cleaned.replace(/\$([^\$\n]+)\$/g, '$1');
 
-            return cleaned;
-        }
+        return cleaned;
+    }
 
-        function App() {
-            const [messages, setMessages] = useState([]);
-            const [input, setInput] = useState('');
-            const [image, setImage] = useState(null);
-            const [activeContextImage, setActiveContextImage] = useState(null);
-            const [isLoading, setIsLoading] = useState(false);
-            const [level, setLevel] = useState('Secondaria I Grado');
-            const [isListening, setIsListening] = useState(false);
-            const [isSpeechSupported, setIsSpeechSupported] = useState(true);
-            
-            const scrollRef = useRef(null);
-            const fileInputRef = useRef(null);
-            const recognitionRef = useRef(null);
-            const baseTextRef = useRef('');
-            const textareaRef = useRef(null);
+    // Converte il testo matematico e formattato in linguaggio naturale ottimizzato per la sintesi vocale (BES / DSA)
+    function prepareTextForSpeech(text) {
+        if (!text) return '';
+        let speech = text;
 
-            // Simboli matematici e scolastici rapidi (incluso il tasto esponente ^)
+        // Rimuove emoji e markdown che confondono lo screen reader
+        speech = speech.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+        speech = speech.replace(/\*\*(.*?)\*\*/g, '$1');
+        speech = speech.replace(/\*(.*?)\*/g, '$1');
+        speech = speech.replace(/#{1,6}\s+/g, '');
+        speech = speech.replace(/>\s+/g, '');
+
+        // Unità di misura con esponente
+        speech = speech.replace(/\bcm³/gi, ' centimetri cubi ');
+        speech = speech.replace(/\bcm²/gi, ' centimetri quadrati ');
+        speech = speech.replace(/\bm³/gi, ' metri cubi ');
+        speech = speech.replace(/\bm²/gi, ' metri quadrati ');
+
+        // Potenze frequenti
+        speech = speech.replace(/²/g, ' alla seconda ');
+        speech = speech.replace(/³/g, ' alla terza ');
+
+        // Sequenze di apici Unicode (es. ¹⁰⁰ -> elevato a 100)
+        const supToNorm = {
+            '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+            '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+            '⁺': '+', '⁻': '-', 'ⁿ': ' n ', 'ˣ': ' x '
+        };
+        speech = speech.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿˣ]+/g, (match) => {
+            const num = match.split('').map(c => supToNorm[c] || c).join('');
+            return ` elevato a ${num} `;
+        });
+
+        // Radici
+        speech = speech.replace(/∛\(([^)]+)\)/g, ' radice cubica di $1 ');
+        speech = speech.replace(/∛([0-9a-zA-Z]+)/g, ' radice cubica di $1 ');
+        speech = speech.replace(/√\(([^)]+)\)/g, ' radice quadrata di $1 ');
+        speech = speech.replace(/√([0-9a-zA-Z]+)/g, ' radice quadrata di $1 ');
+
+        // Frazioni (es. 16/9 -> 16 fratto 9)
+        speech = speech.replace(/([0-9a-zA-Z]+)\/([0-9a-zA-Z]+)/g, '$1 fratto $2');
+
+        // Operazioni e simboli scolastici
+        speech = speech.replace(/·/g, ' per ');
+        speech = speech.replace(/\s\*\s/g, ' per ');
+        speech = speech.replace(/\s:\s/g, ' diviso ');
+        speech = speech.replace(/≤/g, ' minore o uguale a ');
+        speech = speech.replace(/≥/g, ' maggiore o uguale a ');
+        speech = speech.replace(/≠/g, ' diverso da ');
+        speech = speech.replace(/±/g, ' più o meno ');
+        speech = speech.replace(/°/g, ' gradi ');
+        speech = speech.replace(/π/g, ' pi greco ');
+
+        return speech;
+    }
+
+    function App() {
+        const [messages, setMessages] = useState([]);
+        const [input, setInput] = useState('');
+        const [image, setImage] = useState(null);
+        const [activeContextImage, setActiveContextImage] = useState(null);
+        const [isLoading, setIsLoading] = useState(false);
+        const [level, setLevel] = useState('Secondaria I Grado');
+        const [isListening, setIsListening] = useState(false);
+        const [isSpeechSupported, setIsSpeechSupported] = useState(true);
+        const [speakingIndex, setSpeakingIndex] = useState(null);
+        
+        const scrollRef = useRef(null);
+        const fileInputRef = useRef(null);
+        const recognitionRef = useRef(null);
+        const baseTextRef = useRef('');
+        const textareaRef = useRef(null);
+
+        // Controllo della sintesi vocale nativa
+        const speakMessage = (text, index) => {
+            if (!('speechSynthesis' in window)) return;
+
+            // Se stiamo già leggendo questo messaggio, fermiamo la lettura
+            if (speakingIndex === index) {
+                window.speechSynthesis.cancel();
+                setSpeakingIndex(null);
+                return;
+            }
+
+            // Ferma qualsiasi altra lettura in corso
+            window.speechSynthesis.cancel();
+
+            const speechText = prepareTextForSpeech(text);
+            const utterance = new SpeechSynthesisUtterance(speechText);
+            utterance.lang = 'it-IT';
+            utterance.rate = 0.92; // Ritmo leggermente disteso per favorire la comprensione DSA/BES
+            utterance.pitch = 1.0;
+
+            // Seleziona preferibilmente una voce italiana se disponibile nel browser
+            const voices = window.speechSynthesis.getVoices();
+            const itVoice = voices.find(v => v.lang.startsWith('it') || v.lang === 'it_IT');
+            if (itVoice) utterance.voice = itVoice;
+
+            utterance.onstart = () => setSpeakingIndex(index);
+            utterance.onend = () => setSpeakingIndex(null);
+            utterance.onerror = () => setSpeakingIndex(null);
+
+            window.speechSynthesis.speak(utterance);
+        };
+
+        // Simboli matematici e scolastici rapidi (incluso il tasto esponente ^)
             const QUICK_SYMBOLS = ['²', '³', '^', '√', '·', ':', '°', 'π', '≤', '≥', '±', '≠', '∛'];
 
             const SUPERSCRIPT_MAP = {
@@ -234,16 +323,25 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
             };
 
             useEffect(() => {
-                if (scrollRef.current) {
-                    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-                }
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-            }, [messages, isLoading, image, isListening]);
+            if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
+        }, [messages, isLoading, image, isListening, speakingIndex]);
 
-            useEffect(() => {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        useEffect(() => {
+            // Precaricamento voci sintesi vocale se supportato
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.onvoiceschanged = () => {
+                    window.speechSynthesis.getVoices();
+                };
+            }
+        }, []);
+
+        useEffect(() => {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (SpeechRecognition) {
                     const recognition = new SpeechRecognition();
                     recognition.lang = 'it-IT';
@@ -420,24 +518,43 @@ Richiesta/Risposta dello studente: "${currentInput || 'Ho caricato questa pagina
 
                         {}
                         {messages.map((msg, i) => (
-                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-5`}>
-                                <div className={`max-w-[85%] p-4 rounded-2xl ${
-                                    msg.role === 'user' 
-                                        ? 'bg-blue-600 text-white shadow-md' 
-                                        : 'bg-white border border-slate-200 text-slate-800 shadow-xs'
-                                }`}>
-                                    {msg.image && (
-                                        <img 
-                                            src={msg.image} 
-                                            alt="Allegato quesito" 
-                                            className="max-w-full rounded-lg mb-2 border border-slate-100 shadow-sm" 
-                                        />
-                                    )}
-                                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</p>
-                                </div>
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-5`}>
+                            <div className={`max-w-[85%] p-4 rounded-2xl ${
+                                msg.role === 'user' 
+                                    ? 'bg-blue-600 text-white shadow-md' 
+                                    : 'bg-white border border-slate-200 text-slate-800 shadow-xs'
+                            }`}>
+                                {msg.image && (
+                                    <img 
+                                        src={msg.image} 
+                                        alt="Allegato quesito" 
+                                        className="max-w-full rounded-lg mb-2 border border-slate-100 shadow-sm" 
+                                    />
+                                )}
+                                <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                                
+                                {msg.role === 'model' && (
+                                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                                        <button
+                                            type="button"
+                                            onClick={() => speakMessage(msg.text, i)}
+                                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                                speakingIndex === i
+                                                    ? 'bg-amber-100 text-amber-800 border border-amber-300 shadow-xs animate-pulse'
+                                                    : 'hover:bg-slate-100 text-slate-600 border border-transparent'
+                                            }`}
+                                            title={speakingIndex === i ? "Interrompi lettura" : "Ascolta spiegazione (sintesi vocale)"}
+                                        >
+                                            <i data-lucide={speakingIndex === i ? "volume-x" : "volume-2"} size="15"></i>
+                                            <span>{speakingIndex === i ? "Ferma ascolto" : "Ascolta"}</span>
+                                        </button>
+                                        <span className="text-[11px] text-slate-400">Supporto DSA/BES</span>
+                                    </div>
+                                )}
                             </div>
-                        ))}
-                        {isLoading && (
+                        </div>
+                    ))}
+                    {isLoading && (
                             <div className="flex items-center gap-2 text-blue-600 italic text-sm animate-pulse ml-2 py-2">
                                 <i data-lucide="loader-2" className="animate-spin" size="16"></i>
                                 Il tutor sta analizzando il quesito...
