@@ -45,6 +45,39 @@
 
         const { useState, useRef, useEffect } = React;
 
+        // Funzione di compressione immagine per alleggerire il payload e risparmiare banda/token
+        function compressImage(file, maxWidth = 1400, quality = 0.82) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+                        resolve(compressedBase64);
+                    };
+                    img.onerror = (err) => reject(err);
+                };
+                reader.onerror = (err) => reject(err);
+            });
+        }
+
         const SYSTEM_INSTRUCTION = `Sei un tutor esperto INVALSI con rigore visivo assoluto.
 
 REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
@@ -195,7 +228,6 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
             const [messages, setMessages] = useState([]);
             const [input, setInput] = useState('');
             const [image, setImage] = useState(null);
-            const [activeContextImage, setActiveContextImage] = useState(null);
             const [isLoading, setIsLoading] = useState(false);
             const [level, setLevel] = useState('Secondaria I Grado');
             const [speakingIndex, setSpeakingIndex] = useState(null);
@@ -320,11 +352,17 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
                 }
             }, []);
 
-            const handleImage = (file) => {
+            const handleImage = async (file) => {
                 if (file && file.type.startsWith('image/')) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setImage(reader.result);
-                    reader.readAsDataURL(file);
+                    try {
+                        const compressed = await compressImage(file);
+                        setImage(compressed);
+                    } catch (e) {
+                        // Fallback in caso di errore di compressione
+                        const reader = new FileReader();
+                        reader.onloadend = () => setImage(reader.result);
+                        reader.readAsDataURL(file);
+                    }
                 }
             };
 
@@ -347,31 +385,47 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
                 
                 const currentInput = input;
                 const currentImage = image;
-                const imageToUse = currentImage || activeContextImage;
-                if (currentImage) {
-                    setActiveContextImage(currentImage);
-                }
 
                 setInput('');
                 setImage(null);
                 setIsLoading(true);
 
                 try {
-                    const contents = messages.map(m => ({
-                        role: m.role === 'user' ? 'user' : 'model',
-                        parts: [{ text: m.text }]
-                    }));
+                    // Finestra di memoria (rolling window): inviamo solo gli ultimi 6 messaggi per non far lievitare i token
+                    const recentMessages = messages.slice(-6);
 
+                    const contents = recentMessages.map(m => {
+                        const parts = [{ text: m.text || '' }];
+                        // Se un messaggio precedente aveva un'immagine, la includiamo nei turni storici
+                        if (m.image) {
+                            const mimeMatch = m.image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+                            const detectedMime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+                            const base64Data = m.image.replace(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/, '');
+                            parts.unshift({
+                                inlineData: {
+                                    mimeType: detectedMime,
+                                    data: base64Data
+                                }
+                            });
+                        }
+                        return {
+                            role: m.role === 'user' ? 'user' : 'model',
+                            parts: parts
+                        };
+                    });
+
+                    // Turno corrente dell'utente
                     const userParts = [{ 
                         text: `[Livello: ${level}] [Modalità: Apprendimento guidato anti-allucinazione]
 [REGOLA RIGIDA FORMATTAZIONE: NON usare nessun delimitatore $ o sintassi LaTeX come \\frac. Per le potenze usa SEMPRE apici Unicode come ², ³, (4/3)², (4²)/3 senza cappuccio ^. Per le radici usa √. Scrivi come su un quaderno di scuola media.]
 Richiesta/Risposta dello studente: "${currentInput || 'Ho caricato questa pagina di prova INVALSI. Aiutami ad affrontarla passo dopo passo.'}"` 
                     }];
 
-                    if (imageToUse) {
-                        const mimeMatch = imageToUse.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+                    // Alleghiamo l'immagine SOLO se è stata appena caricata in questo invio (senza duplicarla all'infinito)
+                    if (currentImage) {
+                        const mimeMatch = currentImage.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
                         const detectedMime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-                        const base64Data = imageToUse.replace(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/, '');
+                        const base64Data = currentImage.replace(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/, '');
 
                         userParts.push({
                             inlineData: {
