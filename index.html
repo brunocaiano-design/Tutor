@@ -47,6 +47,55 @@
 
         // Funzione di compressione immagine per alleggerire il payload e risparmiare banda/token
         function compressImage(file, maxWidth = 1400, quality = 0.82) {
+            return new Promise((resolve<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutor INVALSI</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for in-browser JSX parsing -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        html, body, #root { 
+            font-family: 'Inter', sans-serif; 
+            height: 100%; 
+            margin: 0; 
+            padding: 0;
+            overflow: hidden; 
+            background-color: #f8fafc; 
+        }
+        .messages-container::-webkit-scrollbar { width: 6px; }
+        .messages-container::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+        .welcome-card { 
+            max-width: 680px; 
+            margin: 30px auto; 
+            padding: 28px; 
+            border-radius: 24px; 
+            background-color: #ffffff;
+            border: 1px solid #f1f5f9; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.04); 
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // Endpoint Google Apps Script
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzRJ7TMzdam3HuuiiS-VEOXaiku3HybiZbRNf59cShkpcE5AoOh_Si10kU6WFSG3JWkNQ/exec";
+
+        const { useState, useRef, useEffect } = React;
+
+        // Funzione di compressione immagine per alleggerire il payload e risparmiare banda/token
+        function compressImage(file, maxWidth = 1400, quality = 0.82) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
@@ -107,7 +156,35 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
 
 5. AMBITO ESCLUSIVO:
    - Solo Matematica e Italiano INVALSI per Scuola Secondaria I Grado e Primo Biennio II Grado.
-   - Rifiuta qualunque richiesta estranea con la formula: "Il mio compito è aiutarti a preparare le prove INVALSI! Torniamo al quesito: cosa ti sembra di questo passaggio?".`;
+   - Rifiuta qualunque richiesta estranea con la formula: "Il mio compito è aiutarti a preparare le prove INVALSI! Torniamo al quesito: cosa ti sembra di questo passaggio?".
+
+6. TUTELA PRIVACY E MINORI (NON DEROGABILE):
+   - Se lo studente nel testo o nell'immagine menziona nomi propri, cognomi, sezioni scolastiche, recapiti o riferimenti a compagni/docenti, NON RIPETERLI MAI.
+   - Tratta sempre l'interlocutore come uno studente anonimo. Se si presenta con dati anagrafici, rispondi concentrandoti unicamente sul contenuto didattico e ricordagli con gentilezza che non è necessario fornire dati personali.`;
+
+        // Funzione di sanificazione e anonimizzazione automatica (GDPR / Privacy Minori)
+        function anonymizeSensitiveData(text) {
+            if (!text) return text;
+            let sanitized = text;
+
+            // Rimuove email
+            sanitized = sanitized.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi, '[email rimossa]');
+
+            // Rimuove numeri di telefono (fissi o cellulari italiani)
+            sanitized = sanitized.replace(/(?:\+39\s?)?(?:3\d{2}|0\d{1,3})[\s.-]?\d{6,7}\b/g, '[telefono rimosso]');
+
+            // Rimuove codice fiscale italiano se presente
+            sanitized = sanitized.replace(/\b[A-Z]{6}\d{2}[A-EHLMPR-T]\d{2}[A-Z]\d{3}[A-Z]\b/gi, '[dato personale rimosso]');
+
+            // Filtra formule di presentazione tipiche: "sono Mario Rossi", "mi chiamo Laura Bianchi", ecc.
+            sanitized = sanitized.replace(/\b(mi chiamo|sono|chiamami)\s+([A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ]+(?:\s+[A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ]+){1,2})/gi, '$1 [studente]');
+
+            // Filtra riferimenti a classi e istituti specifici (es. "della 2D", "frequento la 3A", "scuola Manzoni di Roma")
+            sanitized = sanitized.replace(/\b(della|della classe|frequento la|classe)\s+([1-5]\s*[\^°]?\s*[a-zA-Z])/gi, '$1 [classe]');
+            sanitized = sanitized.replace(/\b(scuola|istituto|liceo|plesso)\s+[A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ]+(?:\s+[A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ]+)?/gi, '[scuola]');
+
+            return sanitized;
+        }
 
         // Funzione potenziata che converte automaticamente formule, radici e apici in notazione scolastica
         function cleanMathOutput(text) {
@@ -415,10 +492,13 @@ REGOLE CRITICHE ANTI-ALLUCINAZIONE (NON DEROGABILI):
                     });
 
                     // Turno corrente dell'utente
+                    const cleanUserInput = anonymizeSensitiveData(currentInput);
+
                     const userParts = [{ 
                         text: `[Livello: ${level}] [Modalità: Apprendimento guidato anti-allucinazione]
 [REGOLA RIGIDA FORMATTAZIONE: NON usare nessun delimitatore $ o sintassi LaTeX come \\frac. Per le potenze usa SEMPRE apici Unicode come ², ³, (4/3)², (4²)/3 senza cappuccio ^. Per le radici usa √. Scrivi come su un quaderno di scuola media.]
-Richiesta/Risposta dello studente: "${currentInput || 'Ho caricato questa pagina di prova INVALSI. Aiutami ad affrontarla passo dopo passo.'}"` 
+[REGOLA RIGIDA PRIVACY: Rispondi in modo anonimo, senza fare riferimento ad alcun nome di persona o scuola.]
+Richiesta/Risposta dello studente: "${cleanUserInput || 'Ho caricato questa pagina di prova INVALSI. Aiutami ad affrontarla passo dopo passo.'}"` 
                     }];
 
                     // Alleghiamo l'immagine SOLO se è stata appena caricata in questo invio (senza duplicarla all'infinito)
@@ -670,12 +750,16 @@ Richiesta/Risposta dello studente: "${currentInput || 'Ho caricato questa pagina
                                     <i data-lucide="send" size="20"></i>
                                 </button>
                             </div>
-                            
-                            {/* Suggerimento per dettatura vocale */}
-                            <div className="mt-2 px-3 flex items-center justify-between text-[11px] text-slate-400 select-none">
+
+                            {/* Suggerimento per dettatura vocale e tutela privacy */}
+                            <div className="mt-2 px-3 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] text-slate-400 select-none">
                                 <span className="flex items-center gap-1.5">
                                     <i data-lucide="mic" size="13" className="text-slate-400"></i>
-                                    <span>Dettatura vocale: premi <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 font-semibold font-mono text-[10px]">Win</kbd> + <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 font-semibold font-mono text-[10px]">H</kbd> da PC oppure tocca il microfono della tastiera su tablet/smartphone.</span>
+                                    <span>Dettatura: premi <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 font-semibold font-mono text-[10px]">Win</kbd> + <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-slate-600 font-semibold font-mono text-[10px]">H</kbd> da PC o microfono tastiera su tablet.</span>
+                                </span>
+                                <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                                    <i data-lucide="shield-check" size="13"></i>
+                                    <span>Privacy protetta: dati anagrafici anonimizzati automaticamente</span>
                                 </span>
                             </div>
                         </div>
